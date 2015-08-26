@@ -36,28 +36,51 @@ DSJN = Operation('DSJN')
 CCAT = Operation('CCAT')
 STAR = Operation('STAR')
 LTRL = Operation('LTRL')
+CLSS = Operation('CLSS')
+NCLS = Operation('NCLS')
+RNGE = Operation('RNGE')
+DOT  = Operation('DOT')
 
 # Reserved characters. Forward slash is reserved in case we want to implement
 # character escapes later.
-RESERVED = {'(', ')', '|', '*', '/'}
+RESERVED = {'.', '[', ']', '(', ')', '|', '*', '/'}
 
 def parse(inpt):
     tree, remnant = parse_d(inpt)
     assert remnant == '', 'parse error: did not consume entire input - probably found a reserved character out of place'
     return tree
 
-# B -> ( D ) or literal
+# B -> ( D )
+# B -> literal
+# B -> [ elements ]
 def parse_b(inpt):
     if inpt == '':
         # this means that a clause somewhere up the call stack needs to be
         # the empty string
         return None, inpt
+    elif inpt[0] == '/': # escaped character
+        assert len(inpt) >= 2, 'parse error: pattern terminated during character escape'
+        return (LTRL, inpt[1]), inpt[2:]
+    elif inpt[0] == '.': # wildcard character
+        return (DOT,), inpt[1:]
     elif inpt[0] == '(': # parenthesized regexp
         d, remnant = parse_d(inpt[1:])
         assert remnant and remnant[0] == ')', 'parse error: no closing ) for earlier ('
         return d, remnant[1:]
+    elif inpt[0] == '[': # character class
+        assert len(inpt) >= 2, 'parse error: malformed character class'
+        if inpt[1] == '^': # negative character class
+            elements, remnant = parse_elements(inpt[2:])
+            assert remnant and remnant[0] == ']', 'parse error: unclosed character class (b)'
+            return ((NCLS,) + elements[1:]), remnant[1:]
+        else: # positive character class
+            elements, remnant = parse_elements(inpt[1:])
+            assert remnant and remnant[0] == ']', 'parse error: unclosed character class (b)'
+            return elements, remnant[1:]
     elif inpt[0] in RESERVED:
         # can't raise an exception for this; it's most likely not an error
+        # specifically, a boundary (e.g. before a '|' or a ')') will be
+        # caught here.
         return None, inpt
     else: # literal
         return (LTRL, inpt[0]), inpt[1:]
@@ -111,3 +134,42 @@ def parse_dprime(inpt):
             return c, remnant
         else:
             return (DSJN, c, sd), new_remnant
+
+# elements -> range elements
+# elements -> None
+def parse_elements(inpt):
+    rnge, remnant = parse_range(inpt)
+    if rnge is None:
+        return None, inpt
+    else:
+        elements, new_remnant = parse_elements(remnant)
+        if elements is None:
+            return rnge, remnant
+        else:
+            return (((CLSS, rnge[1] | elements[1]) + rnge[2:] + elements[2:]),
+                    new_remnant)
+
+# range -> literal rprime
+# range -> None
+def parse_range(inpt):
+    assert inpt != '', 'parse error: unclosed character class (range)'
+    if inpt[0] == ']':
+        return None, inpt
+    else:
+        begin = inpt[0]
+        rprime, remnant = parse_rprime(inpt[1:])
+        if rprime is None: # not a range, just a literal
+            return (CLSS, {begin}), inpt[1:]
+        else:
+            return (CLSS, set(), (RNGE, begin, rprime)), remnant
+
+# rprime -> - literal
+# rprime -> None
+def parse_rprime(inpt):
+    assert inpt != '', 'parse error: unclosed character class (rprime)'
+    if inpt[0] != '-' or inpt[0:2] == '-]':
+        # - at the end of a class is taken literally
+        return None, inpt
+    else:
+        assert len(inpt) >= 2, 'parse error: unclosed character class (rprime)'
+        return inpt[1], inpt[2:]
