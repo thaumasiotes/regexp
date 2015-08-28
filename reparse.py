@@ -156,6 +156,9 @@ def parse_range(inpt):
     if inpt[0] == ']':
         return None, inpt
     else:
+        if inpt[0] == '/': # escape sequence!
+            inpt = inpt[1:]
+            assert inpt, 'parse error: pattern terminated during escape sequence'
         begin = inpt[0]
         rprime, remnant = parse_rprime(inpt[1:])
         if rprime is None: # not a range, just a literal
