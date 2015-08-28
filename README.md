@@ -6,7 +6,7 @@ Call `regexp.match(pattern, text)`.  `pattern` must be a string representing the
 
 Call `regexp.search(pattern, text)` if you want to instead detect the presence of any substring of `text` that matches `pattern`.
 
-For a pattern which will be used several times, you can obtain a compiled version by calling `regexp.match_compile(pattern)` (for whole-text matching) or `regexp.search_compile(pattern)` (for substring matching). The returned object will have a `match` or `search` method, as appropriate.
+For a pattern which will be used several times, you can obtain a compiled version by calling `regexp.match_compile(pattern)` (for whole-text matching) or `regexp.search_compile(pattern)` (for substring matching). The returned object will have a `self.match(text)` or `self.search(text)` method, as appropriate.
 
 Note: to include a `]` in a character class, it must be escaped with a forward slash: `[ab/]c]` will match any of `a`, `b`, `c`, or `]`.
 
