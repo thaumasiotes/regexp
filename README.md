@@ -8,7 +8,9 @@ Call `regexp.search(pattern, text)` if you want to instead detect the presence o
 
 For a pattern which will be used several times, you can obtain a compiled version by calling `regexp.match_compile(pattern)` (for whole-text matching) or `regexp.search_compile(pattern)` (for substring matching). The returned object will have a `self.match(text)` or `self.search(text)` method, as appropriate.
 
-Note: to include a `]` in a character class, it must be escaped with a forward slash: `[ab/]c]` will match any of `a`, `b`, `c`, or `]`.
+The escape character for this parser is `/`. You might want to escape any of the following characters: `*()[]^$.|/`. There is no `/n` newline; instead, provide a raw newline as `\x0a` or `\n`.
+
+Note: to include a `]` in a character class, it must be escaped: `[ab/]c]` will match any of `a`, `b`, `c`, or `]`.
 
 ###Non-features:
 
