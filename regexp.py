@@ -91,6 +91,10 @@ def compile_to_nfa(tree, names=count(1), accept_final=True):
         assert sub_f1.transitions == {} and sub_f2.transitions == {}
         sub_f1.transitions[''] = [final]
         sub_f2.transitions[''] = [final]
+    elif op == reparse.GROUP:
+        # not implemented; we'll ignore it
+        assert len(tree) == 3
+        initial, final = compile_to_nfa(tree[2])
     else:
         raise Exception("malformed parse tree given to regexp.compile_to_nfa")
     return initial, final

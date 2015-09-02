@@ -40,20 +40,24 @@ CLSS = Operation('CLSS')
 NCLS = Operation('NCLS')
 RNGE = Operation('RNGE')
 DOT  = Operation('DOT')
+GROUP = Operation('GROUP')
 
 # Reserved characters. Forward slash is reserved in case we want to implement
 # character escapes later.
 RESERVED = {'.', '[', ']', '(', ')', '|', '*', '/'}
 
+from itertools import count
+
 def parse(inpt):
-    tree, remnant = parse_d(inpt)
+    groups = count(1)
+    tree, remnant = parse_d(inpt, groups)
     assert remnant == '', 'parse error: did not consume entire input - probably found a reserved character out of place'
     return tree
 
 # B -> ( D )
 # B -> literal
 # B -> [ elements ]
-def parse_b(inpt):
+def parse_b(inpt, groups):
     if inpt == '':
         # this means that a clause somewhere up the call stack needs to be
         # the empty string
@@ -64,9 +68,10 @@ def parse_b(inpt):
     elif inpt[0] == '.': # wildcard character
         return (DOT,), inpt[1:]
     elif inpt[0] == '(': # parenthesized regexp
-        d, remnant = parse_d(inpt[1:])
+        group = groups.next()
+        d, remnant = parse_d(inpt[1:], groups)
         assert remnant and remnant[0] == ')', 'parse error: no closing ) for earlier ('
-        return d, remnant[1:]
+        return (GROUP, group, d), remnant[1:]
     elif inpt[0] == '[': # character class
         assert len(inpt) >= 2, 'parse error: malformed character class'
         if inpt[1] == '^': # negative character class
@@ -86,8 +91,8 @@ def parse_b(inpt):
         return (LTRL, inpt[0]), inpt[1:]
 
 # S -> B * or B
-def parse_s(inpt):
-    b, remnant = parse_b(inpt)
+def parse_s(inpt, groups):
+    b, remnant = parse_b(inpt, groups)
     if b is None: # need to backtrack somewhere up the call stack
         return None, inpt
     elif remnant and remnant[0] == '*': # found *
@@ -96,21 +101,21 @@ def parse_s(inpt):
         return b, remnant
 
 # C -> S C or None
-def parse_c(inpt):
-    s, remnant = parse_s(inpt)
+def parse_c(inpt, groups):
+    s, remnant = parse_s(inpt, groups)
     if s is None:
         return None, inpt
     else:
-        c, new_remnant = parse_c(remnant)
+        c, new_remnant = parse_c(remnant, groups)
         if c is None:
             return s, remnant
         else:
             return (CCAT, s, c), new_remnant
 
 # D -> C D'
-def parse_d(inpt):
-    c, remnant = parse_c(inpt)
-    sd, new_remnant = parse_dprime(remnant)
+def parse_d(inpt, groups):
+    c, remnant = parse_c(inpt, groups)
+    sd, new_remnant = parse_dprime(remnant, groups)
     if c is None and sd is None:
         assert inpt == '', 'egregious parse error (d)'
         return None, inpt
@@ -122,14 +127,14 @@ def parse_d(inpt):
         return (DSJN, c, sd), new_remnant
 
 # D' -> | C D' or None
-def parse_dprime(inpt):
+def parse_dprime(inpt, groups):
     if inpt == '' or inpt[0] != '|':
         return None, inpt
     else:
         assert inpt[0] == '|', 'egregious parse error (dprime)'
-        c, remnant = parse_c(inpt[1:])
+        c, remnant = parse_c(inpt[1:], groups)
         assert c is not None, 'parse error: | followed by invalid expression'
-        sd, new_remnant = parse_dprime(remnant)
+        sd, new_remnant = parse_dprime(remnant, groups)
         if sd is None:
             return c, remnant
         else:
