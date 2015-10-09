@@ -7,15 +7,15 @@
 #   R -> R | R (disjunction)
 # Since this is quite ambiguous, we use a version encoding an explicit
 # order of operations (first star, then concatenation, then disjunction):
-#   D  -> C D'
-#   D' -> | C D'
-#   D' -> "" (the empty string)
-#   C  -> S C
-#   C  -> ""
-#   S  -> B *
-#   S  -> B
-#   B  -> ( D )
-#   B  -> literal
+#   dsjn   -> ccat dprime
+#   dprime -> '|' ccat dprime
+#   dprime -> '' (the empty string)
+#   ccat   -> star ccat
+#   ccat   -> ''
+#   star   -> base '*'
+#   star   -> base
+#   base   -> '(' dsjn ')'
+#   base   -> literal
 # In assembling the parse tree, we take some shortcuts to omit any
 # useless nodes that we happen to derive. For example, we prefer to
 # parse the regex "a" as (LTRL, "a") rather than as
@@ -50,14 +50,14 @@ from itertools import count
 
 def parse(inpt):
     groups = count(1)
-    tree, remnant = parse_d(inpt, groups)
+    tree, remnant = parse_dsjn(inpt, groups)
     assert remnant == '', 'parse error: did not consume entire input - probably found a reserved character out of place'
     return tree
 
-# B -> ( D )
-# B -> literal
-# B -> [ elements ]
-def parse_b(inpt, groups):
+# base -> '(' dsjn ')'
+# base -> literal
+# base -> '[' elements ']'
+def parse_base(inpt, groups):
     if inpt == '':
         # this means that a clause somewhere up the call stack needs to be
         # the empty string
@@ -69,18 +69,18 @@ def parse_b(inpt, groups):
         return (DOT,), inpt[1:]
     elif inpt[0] == '(': # parenthesized regexp
         group = groups.next()
-        d, remnant = parse_d(inpt[1:], groups)
+        d, remnant = parse_dsjn(inpt[1:], groups)
         assert remnant and remnant[0] == ')', 'parse error: no closing ) for earlier ('
         return (GROUP, group, d), remnant[1:]
     elif inpt[0] == '[': # character class
         assert len(inpt) >= 2, 'parse error: malformed character class'
         if inpt[1] == '^': # negative character class
             elements, remnant = parse_elements(inpt[2:])
-            assert remnant and remnant[0] == ']', 'parse error: unclosed character class (b)'
+            assert remnant and remnant[0] == ']', 'parse error: unclosed character class (base)'
             return ((NCLS,) + elements[1:]), remnant[1:]
         else: # positive character class
             elements, remnant = parse_elements(inpt[1:])
-            assert remnant and remnant[0] == ']', 'parse error: unclosed character class (b)'
+            assert remnant and remnant[0] == ']', 'parse error: unclosed character class (base)'
             return elements, remnant[1:]
     elif inpt[0] in RESERVED:
         # can't raise an exception for this; it's most likely not an error
@@ -90,9 +90,10 @@ def parse_b(inpt, groups):
     else: # literal
         return (LTRL, inpt[0]), inpt[1:]
 
-# S -> B * or B
-def parse_s(inpt, groups):
-    b, remnant = parse_b(inpt, groups)
+# star -> base '*'
+# star -> base
+def parse_star(inpt, groups):
+    b, remnant = parse_base(inpt, groups)
     if b is None: # need to backtrack somewhere up the call stack
         return None, inpt
     elif remnant and remnant[0] == '*': # found *
@@ -100,21 +101,22 @@ def parse_s(inpt, groups):
     else: # no *
         return b, remnant
 
-# C -> S C or None
-def parse_c(inpt, groups):
-    s, remnant = parse_s(inpt, groups)
+# ccat -> star ccat
+# ccat -> None
+def parse_ccat(inpt, groups):
+    s, remnant = parse_star(inpt, groups)
     if s is None:
         return None, inpt
     else:
-        c, new_remnant = parse_c(remnant, groups)
+        c, new_remnant = parse_ccat(remnant, groups)
         if c is None:
             return s, remnant
         else:
             return (CCAT, s, c), new_remnant
 
-# D -> C D'
-def parse_d(inpt, groups):
-    c, remnant = parse_c(inpt, groups)
+# dsjn -> ccat dprime
+def parse_dsjn(inpt, groups):
+    c, remnant = parse_ccat(inpt, groups)
     sd, new_remnant = parse_dprime(remnant, groups)
     if c is None and sd is None:
         assert inpt == '', 'egregious parse error (d)'
@@ -126,19 +128,23 @@ def parse_d(inpt, groups):
         assert c is not None, 'parse error: | used without first subexpression'
         return (DSJN, c, sd), new_remnant
 
-# D' -> | C D' or None
+# dprime -> '|' ccat dprime
+# dprime -> None
 def parse_dprime(inpt, groups):
     if inpt == '' or inpt[0] != '|':
         return None, inpt
     else:
         assert inpt[0] == '|', 'egregious parse error (dprime)'
-        c, remnant = parse_c(inpt[1:], groups)
+        c, remnant = parse_ccat(inpt[1:], groups)
         assert c is not None, 'parse error: | followed by invalid expression'
         sd, new_remnant = parse_dprime(remnant, groups)
         if sd is None:
             return c, remnant
         else:
             return (DSJN, c, sd), new_remnant
+
+# elements, range, and rprime nodes are used to recognize standard-style
+# character classes, such as [A-Za-z0-9]
 
 # elements -> range elements
 # elements -> None
